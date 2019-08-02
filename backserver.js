@@ -215,18 +215,25 @@ function updateClock() {
 		var updSize = (1 + 1 + plupdates.length * (4 + pinfo_t_SIZE) +
 			2 + pxupdates.length * pixupd_t_SIZE +
 			1 + 4 * plleft.length);
+		var pUpdSize = (1 + 1 + plupdates.filter(u=>!u.vanish).length * (4 + pinfo_t_SIZE) +
+			2 + pxupdates.length * pixupd_t_SIZE +
+			1 + 4 * plleft.filter(u=>!u[1]).length);
 
 		//updSize += 2;
 
 		var upd = new Uint8Array(updSize);
+		var pUpd = new Uint8Array(pUpdSize);
 
-		upd[0] = UPDATE;
+		upd[0] = pUpd[0] = UPDATE;
 
 		var upd_dv = new DataView(upd.buffer);
+		var pUpd_dv = new DataView(upd.buffer);
 
 		var offs = 2;
+		var pOffs = 2;
 
 		var tmp = 0;
+		var pTmp = 0;
 		for (var u = 0; u < plupdates.length; u++) {
 			var client = plupdates[u];
 
@@ -242,13 +249,31 @@ function updateClock() {
 
 			offs += pinfo_t_SIZE;
 			tmp++;
+			
+			if (!client.vanish) {
+				pUpd_dv.setUint32(pOffs, client.id, true);
+				pOffs += 4;
+
+				pUpd_dv.setInt32(pOffs + 0, client.x, true);
+				pUpd_dv.setInt32(pOffs + 4, client.y, true);
+				pUpd_dv.setUint8(pOffs + 4 + 4, client.r);
+				pUpd_dv.setUint8(pOffs + 4 + 4 + 1, client.g);
+				pUpd_dv.setUint8(pOffs + 4 + 4 + 1 + 1, client.b);
+				pUpd_dv.setUint8(pOffs + 4 + 4 + 1 + 1 + 1, client.tool);
+
+				pOffs += pinfo_t_SIZE;
+				pTmp++;
+			}
 		}
 
 		upd[1] = tmp;
+		pUpd[1] = pTmp;
 
 		upd_dv.setUint16(offs, pxupdates.length, true);
+		pUpd_dv.setUint16(pOffs, pxupdates.length, true);
 
 		offs += 2;
+		pOffs += 2;
 
 		for (var u = 0; u < pxupdates.length; u++) {
 			var client = pxupdates[u];
@@ -260,15 +285,27 @@ function updateClock() {
 			upd_dv.setUint8(offs + 4 + 4 + 1 + 1, client.b);
 
 			offs += pixupd_t_SIZE;
+			
+			pUpd_dv.setInt32(pOffs, client.x, true);
+			pUpd_dv.setInt32(pOffs + 4, client.y, true);
+			pUpd_dv.setUint8(pOffs + 4 + 4, client.r);
+			pUpd_dv.setUint8(pOffs + 4 + 4 + 1, client.g);
+			pUpd_dv.setUint8(pOffs + 4 + 4 + 1 + 1, client.b);
+
+			pOffs += pixupd_t_SIZE;
 		}
 		upd_dv.setUint8(offs, plleft.length); //upd_dv.setUint16(offs, plleft.length, true);
 
 		offs += 1;
 
 		for (var u = 0; u < plleft.length; u++) {
-			var id = plleft[u]; // this is a number
-			upd_dv.setUint32(offs, id, true);
+			var arr = plleft[u]; // [id, vanish]
+			upd_dv.setUint32(offs, arr[0], true);
 			offs += 4;
+			if (!arr[1]) {
+				pUpd_dv.setUint32(pOffs, arr[0], true);
+				pOffs += 4;
+			}
 		}
 
 		delete updates[i];
@@ -281,7 +318,7 @@ function updateClock() {
 		for (var c = 0; c < clients.length; c++) {
 			var client = clients[c];
 			var send = client.send;
-			send(upd)
+			send(client.serverRank > permissions.user ? upd : pUpd)
 		}
 	}
 	setTimeout(updateClock, interval);
@@ -536,7 +573,8 @@ function wssOnConnection(ws, req) {
 						r,
 						g,
 						b,
-						tool
+						tool,
+						vanish: client.vanish
 					})
 					break;
 				case 776: //paste
@@ -605,6 +643,7 @@ function wssOnConnection(ws, req) {
 					id: clientId,
 					nick: "",
 					stealth: false,
+					vanish: false,
 					clientRank: 0,
 					serverRank: 0,
 					send,
@@ -621,7 +660,8 @@ function wssOnConnection(ws, req) {
 					r: 0,
 					g: 0,
 					b: 0,
-					tool: 0
+					tool: 0,
+					vanish: false
 				})
 
 				world.clients.push(client);
@@ -697,7 +737,8 @@ function wssOnConnection(ws, req) {
 						r: cli.col_r,
 						g: cli.col_g,
 						b: cli.col_b,
-						tool: cli.tool
+						tool: cli.tool,
+						vanish: cli.vanish
 					};
 					doUpdatePlayerPos(worldName, upd)
 				}
@@ -771,6 +812,20 @@ function wssOnConnection(ws, req) {
 								send("Server: You are now an admin. Do /help for a list of commands.");
 								client.serverRank = permissions.admin
 								client.clientRank = permissions.admin
+								for (var w in world.clients) {
+									var cli = world.clients[w];
+									var upd = {
+										id: cli.id,
+										x: cli.x_pos,
+										y: cli.y_pos,
+										r: cli.col_r,
+										g: cli.col_g,
+										b: cli.col_b,
+										tool: cli.tool,
+										vanish: cli.vanish
+									};
+									doUpdatePlayerPos(worldName, upd)
+								}
 							} else {
 								send("Invalid password");
 							}
@@ -843,6 +898,20 @@ function wssOnConnection(ws, req) {
 								send("Server: You are now an mod. Do /help for a list of commands.");
 								client.serverRank = permissions.mod
 								client.clientRank = permissions.mod
+								for (var w in world.clients) {
+									var cli = world.clients[w];
+									var upd = {
+										id: cli.id,
+										x: cli.x_pos,
+										y: cli.y_pos,
+										r: cli.col_r,
+										g: cli.col_g,
+										b: cli.col_b,
+										tool: cli.tool,
+										vanish: cli.vanish
+									};
+									doUpdatePlayerPos(worldName, upd)
+								}
 							} else {
 								send("Invalid password");
 							}
@@ -1133,6 +1202,33 @@ function wssOnConnection(ws, req) {
 								client.stealth = false;
 								send("Stealth mode disabled");
 							}
+						} else if (cmdCheck[0] == "vanish" && (client.serverRank > permissions.user)) {//placeholder vanish command mark
+							if (!client.vanish) {
+								client.vanish = true;
+								var upd = new Uint8Array(9);
+								upd[0] = UPDATE;
+								new DataView(upd).setUint32(5, client.id, true)
+								for (var c = 0; c < world.clients.length) {
+									if (c.serverRank < permissions.moderator) {
+										world.clients[c].send(upd)
+									}
+								}
+								send("Vanish mode enabled");
+							} else {
+								client.vanish = false;
+								var upd = {
+									id: client.id,
+									x: client.x_pos,
+									y: client.y_pos,
+									r: client.col_r,
+									g: client.col_g,
+									b: client.col_b,
+									tool: client.tool,
+									vanish: false
+								};
+								doUpdatePlayerPos(client.world, upd);
+								send("Vanish mode disabled");
+							}
 						} else if (cmdCheck[0] == "broadcast") {
 							var pw_arg = cmdCheck[1];
 							if (config.global_chat_pw != pw_arg) {
@@ -1161,7 +1257,7 @@ function wssOnConnection(ws, req) {
 		if (!client) return;
 		var clIdx = world.clients.indexOf(client);
 		if (clIdx > -1) {
-			doUpdatePlayerLeave(worldName, client.id)
+			doUpdatePlayerLeave(worldName, [client.id, client.vanish])
 			world.clients.splice(clIdx, 1);
 		}
 	})
