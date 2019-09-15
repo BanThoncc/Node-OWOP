@@ -654,7 +654,7 @@ var playerList = exports.playerList = {};
 var playerListTable = exports.playerListTable = document.createElement("table");
 var playerListWindow = exports.playerListWindow = new _windowsys.GUIWindow('Players', { closeable: true }, function (wdow) {
 	var tableHeader = document.createElement("tr");
-	tableHeader.innerHTML = "<th>Id</th><th>X</th><th>Y</th><th>R</th><th>G</th><th>B</th><th>Color</th><th>Tool</th>";
+	tableHeader.innerHTML = "<th>Id</th><th>X</th><th>Y</th><th>Color</th><th>Tool</th>";
 	playerListTable.appendChild(tableHeader);
 	wdow.container.appendChild(playerListTable);
 	wdow.container.id = "player-list";
@@ -6479,7 +6479,7 @@ var Player = exports.Player = function () {
         this.clr = _color.colorUtils.toHTML(this.clr);
 
         var playerListEntry = document.createElement("tr");
-        playerListEntry.innerHTML = "<td>" + this.id + "</td><td>" + Math.floor(x / 16) + "</td><td>" + Math.floor(y / 16) + "</td><td>" + rgb[0] + "</td><td>" + rgb[1] + "</td><td>" + rgb[2] + ('</td><td><div style="width: 10px; height: 10px; background: rgb(' + rgb[0] + ', ' + rgb[1] + ',' + rgb[2] + ')"></div></td>') + "<td>" + tool + "</td>";
+        playerListEntry.innerHTML = "<td>" + this.id + "</td><td>" + Math.floor(x / 16) + "</td><td>" + Math.floor(y / 16) + '</td><td style="background-color:' + this.htmlRgb + '">' + this.htmlRgb + "</td><td>" + tool + "</td>";
         _main.playerList[this.id] = playerListEntry;
         _main.playerListTable.appendChild(playerListEntry);
     }
