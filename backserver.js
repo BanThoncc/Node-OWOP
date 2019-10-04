@@ -1303,12 +1303,7 @@ function createWSServer() {
 	wss.on("connection", wssOnConnection);
 }
 
-console.log("Type 'k' or 'kill' (and press enter) to close this server (safe but slower)");
-console.log("Type 'n' to close this server (but it doesn't save world if you have many players dont use it).");
-console.log("Type 'cmdmode' or 'commandmode' to set mode of typying to command mode.");
-console.log("Type 'msgmode' or 'messagemode' to set mode of typying to message mode.");
-console.log("Type anything (with message mode) to send this in chat.");
-console.log("Type command (like console.log('lol')) (with command mode) to eval it.");
+console.log("You are now the server owner. Do /help for a list of commands.")
 
 async function beginServer() {
 	console.log("beginServer...");
@@ -1372,54 +1367,75 @@ async function beginServer() {
 beginServer();
 
 var stdin = process.openStdin();
-var sendToPlayersMessage = true;
+var serverOpNick = "";
+var serverOpRank = "";
 stdin.on("data", function(d) {
 	var msg = d.toString().trim();
 	if (terminatedSocketServer) return;
-	if (msg.toLowerCase() == "n") { // cancels server (unsafe)
-		process.exit();
-		return;
-	} else if (msg.toLowerCase() == "k" || msg.toLowerCase() == "kill" || msg.toLowerCase() == "stop") { // close server (safe, but slower)
-		console.log("Exiting...")
-		terminatedSocketServer = true;
-		lastDBSave = true;
-		for (var w in worlds) {
-			var world = worlds[w];
-			for (var c = 0; c < world.clients.length; c++) {
-				var client = world.clients[c]
-				client.send(closeMsg)
+	if (msg.startsWith("/")) {
+		var cmdCheck = msg.slice(1).split(" ");
+		cmdCheck[0] = cmdCheck[0].toLowerCase();
+		var argString = cmdCheck.slice(1).join(" ").trim();
+		cmdCheck.filter(x=>x);
+		if (cmdCheck[0] == "help") {
+			console.log("/help - Lists all commands.");
+			console.log("/stop, /kill [safe|unsafe] - Closes the server. Unsafe mode closes the server instantly, but might not save the worlds.");
+			console.log("/js, /eval <code> - Evaluates the given code.");
+			console.log("/nick <nick> - Changes your nick.");
+			console.log("/rank <user|moderator|admin|server|tell|discord> - Changes your rank. (Only affects messages.)");
+		} else if (cmdCheck[0] == "kill" || cmdCheck[0] == "stop") {
+			if (cmdCheck[1] == "safe" || !cmdCheck[1]) {
+				console.log("Exiting...");
+				terminatedSocketServer = true;
+				lastDBSave = true;
+				for (var w in worlds) {
+					var world = worlds[w];
+					for (var c = 0; c < world.clients.length; c++) {
+						var client = world.clients[c];
+						client.send(closeMsg);
+					}
+				}
+				lastDBCallback = function() {
+					process.exit();
+				}
+			} else if (cmdCheck[1] == "unsafe") {
+				process.exit();
+			} else {
+				console.log("Usage: /" + cmdCheck[0] + " [safe|unsafe]")
+			}
+		} else if (cmdCheck[0] == "eval" || cmdCheck[0] == "js") {
+			try {
+				console.log(String(eval(argString)));
+			} catch (e) {
+				console.log(e);
+			}
+		} else if (cmdCheck[0] == "nick") {
+			serverOpNick = argString;
+			if (argString) {
+				console.log("Nickname set to: '" + argString + "'");
+			} else {
+				console.log("Nickname reset.");
+			}
+		} else if (cmdCheck[0] == "rank") {
+			var rankIndex = ["user","moderator","admin","server","tell","discord"].indexOf(cmdCheck[1].toLowerCase())
+			if (~rankIndex) {
+				serverOpRank = rankIndex;
+				console.log("Set rank to " + cmdCheck[1].toLowerCase() + ".");
+			} else {
+				console.log("Usage: /rank <user|moderator|admin|server|tell|discord>")
 			}
 		}
-		lastDBCallback = function() {
-			process.exit();
-		}
-		return;
-	} else if (msg.toLowerCase() == "commandmode" || msg.toLowerCase() == "cmdmode") {
-		sendToPlayersMessage = false;
-		console.log("Using cmdMode");
-		return;
-	} else if (msg.toLowerCase() == "msgmode" || msg.toLowerCase() == "messagemode") {
-		sendToPlayersMessage = true;
-		console.log("Using msgMode")
-		return;
-	}
-	if (sendToPlayersMessage) {
+	} else {
 		function sendToWorlds(msg) {
 			for (var gw in worlds) {
 				var worldCurrent = worlds[gw];
 				var clientsOfWorld = worldCurrent.clients;
 				for (var s = 0; s < clientsOfWorld.length; s++) {
 					var sendToClient = clientsOfWorld[s].send;
-					sendToClient(msg)
+					sendToClient(msg);
 				}
 			}
 		}
-		sendToWorlds("<span style='color: red'>[SERVER]</span> " + msg)
-	} else {
-		try {
-			return console.log(String(eval(msg)))
-		} catch (e) {
-			console.log('[ERROR]:' + e.name + ":" + e.message + "\n" + e.stack)
-		}
+		sendToWorlds((serverOpNick&&["[0] ",""," ","[Server] "][serverOpRank]||["","(M) ","(A) ","Server","-> ","[D] "][serverOpRank]).trimLeft()+(serverOpNick||(serverOpRank==3?"":"0"))+": "+msg);
 	}
 });
